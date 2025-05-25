@@ -5,7 +5,7 @@ Video doorbell on ESP32-CAM board, with a speaker and a microphone for two-way a
 - ESP32-CAM board (5€)
   - alternatives possible, but substantial wiring changes required
 - OV2640 camera with a ribbon cable (short recommended) (choose a wider angle lens, 120° - 160°) (~7€)
-  - alternatives include other ESP32 compatible cameras such as OV5620 which provides better resolution and low light performance due to larger sensor, but ESP32 can be underpowered for full resolution; also to note is that this camera overheats quickly when paired with the ESP32-CAM board, so it would require a small heatsink on the back of the camera
+  - alternatives include other ESP32 compatible cameras such as OV5640 which provides better resolution and low light performance due to larger sensor, but ESP32 can be underpowered for full resolution; also to note is that this camera overheats quickly when paired with the ESP32-CAM board, so it would require a small heatsink on the back of the camera
 - INMP441 microphone (2€)
   - other I2C microphones possible with wiring changes
 - MAX98357 amplifier (1€)
