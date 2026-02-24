@@ -22,9 +22,6 @@ Also you can include more components that you may want or exclude any that you d
 ## Wiring and assembly
 ![diagram](https://github.com/user-attachments/assets/e7d41b37-6bdb-458e-8228-acb570b99bae)
 
-### Contact me if you want to buy a PCB so I can buy in bulk for all interested, or maybe even if you want it assembled.
-
-End result:
 
 In order to attach the camera to the board you have to lift the latch below the card slot, apply the ribbon with camera facing up and close the latch. Be careful when handling the camera as it is delicate.
 
