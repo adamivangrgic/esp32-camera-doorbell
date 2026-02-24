@@ -1,0 +1,355 @@
+esphome:
+  name: "Doorbell"
+  friendly_name: doorbell
+  includes:
+    - esp32_twoway_audio.h
+    - esp32_twoway_audio.cpp
+
+  on_boot:
+    priority: 600
+    then:
+      - lock.lock: door_lock
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+deep_sleep:
+
+time:
+  - platform: sntp
+    timezone: "Europe/Zagreb"
+    on_time:
+      - seconds: 0
+        minutes: 30
+        hours: 3
+        then:
+          - switch.turn_on: restart
+
+psram:
+
+logger:
+  #level: WARN
+  #level: VERBOSE
+  level: INFO
+
+  #on_message:
+  #  level: ERROR
+  #  then:
+  #
+  # [esp32_camera_web_server:179] [1;31m[httpd] [0;33m STREAM: failed to acquire frame
+
+debug:
+  update_interval: 60s
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "changeme"
+  services:  # change camera parameters on-the-fly
+    - service: camera_set_param
+      variables:
+        name: string
+        value: int
+      then:
+        - lambda: |-
+            bool state_return = false;
+            if (("contrast" == name) && (value >= -2) && (value <= 2)) { id(espcam).set_contrast(value); state_return = true; }
+            if (("brightness" == name) && (value >= -2) && (value <= 2)) { id(espcam).set_brightness(value); state_return = true; }
+            if (("saturation" == name) && (value >= -2) && (value <= 2)) { id(espcam).set_saturation(value); state_return = true; }
+            if (("special_effect" == name) && (value >= 0U) && (value <= 6U)) { id(espcam).set_special_effect((esphome::esp32_camera::ESP32SpecialEffect)value); state_return = true; }
+            if (("aec_mode" == name) && (value >= 0U) && (value <= 1U)) { id(espcam).set_aec_mode((esphome::esp32_camera::ESP32GainControlMode)value); state_return = true; }
+            if (("aec2" == name) && (value >= 0U) && (value <= 1U)) { id(espcam).set_aec2(value); state_return = true; }
+            if (("ae_level" == name) && (value >= -2) && (value <= 2)) { id(espcam).set_ae_level(value); state_return = true; }
+            if (("aec_value" == name) && (value >= 0U) && (value <= 1200U)) { id(espcam).set_aec_value(value); state_return = true; }
+            if (("agc_mode" == name) && (value >= 0U) && (value <= 1U)) { id(espcam).set_agc_mode((esphome::esp32_camera::ESP32GainControlMode)value); state_return = true; }
+            if (("agc_value" == name) && (value >= 0U) && (value <= 30U)) { id(espcam).set_agc_value(value); state_return = true; }
+            if (("agc_gain_ceiling" == name) && (value >= 0U) && (value <= 6U)) { id(espcam).set_agc_gain_ceiling((esphome::esp32_camera::ESP32AgcGainCeiling)value); state_return = true; }
+            if (("wb_mode" == name) && (value >= 0U) && (value <= 4U)) { id(espcam).set_wb_mode((esphome::esp32_camera::ESP32WhiteBalanceMode)value); state_return = true; }
+            if (("test_pattern" == name) && (value >= 0U) && (value <= 1U)) { id(espcam).set_test_pattern(value); state_return = true; }
+            if (true == state_return) {
+              id(espcam).update_camera_parameters();
+            }
+            else {
+              ESP_LOGW("esp32_camera_set_param", "Error in name or data range");
+            }
+
+ota:
+  - platform: esphome
+    password: "alsochangeme"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  use_address: 192.168.1.60
+
+  manual_ip:
+    static_ip: 192.168.1.60
+    gateway: 192.168.1.1
+    subnet: 255.255.255.0
+    dns1: 9.9.9.9
+
+  power_save_mode: none
+  fast_connect: on
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Doorbell Fallback Hotspot"
+    password: "alsochangeme"
+
+captive_portal:
+
+web_server:
+  version: 3
+
+number:
+  - platform: template
+    max_value: 20
+    min_value: 1
+    step: 1
+    name: "Vrijeme do zaključavanja"
+    id: "timeout"
+    unit_of_measurement: "s"
+    optimistic: True
+    initial_value: 5
+    entity_category: config
+
+script:
+  - id: auto_turn_off_comm
+    then:
+      - delay: 180s
+      - switch.turn_off: enable_audio
+
+switch:
+  - platform: template
+    name: "Restart"
+    id: restart
+    optimistic: True
+    entity_category: diagnostic
+    on_turn_on: 
+      then:
+        - deep_sleep.enter:
+            sleep_duration: 10sec
+
+  ##
+
+  - platform: template
+    optimistic: True
+    id: enable_tone
+    name: "Tone"
+    entity_category: diagnostic
+    on_turn_on:
+      then:
+        - lambda: |
+            id(tone_switch).publish_state(true);
+        - delay: 5sec
+        - switch.turn_off: enable_tone
+    on_turn_off: 
+      then:
+        - lambda: |
+            id(tone_switch).publish_state(false);
+
+  - platform: template
+    optimistic: True
+    name: "Mikrofon"
+    id: enable_audio
+    icon: mdi:microphone
+    on_turn_on: 
+      then:
+        - lambda: |
+            id(tone_switch).publish_state(false);
+            id(enable_microphone_switch).publish_state(true);
+            id(enable_speaker_switch).publish_state(true);
+        - script.execute: auto_turn_off_comm
+    on_turn_off: 
+      then:
+        - lambda: |
+            id(tone_switch).publish_state(false);
+            id(enable_microphone_switch).publish_state(false);
+            id(enable_speaker_switch).publish_state(false);
+            id(partner_ip_sensor).publish_state("");
+        - script.stop: auto_turn_off_comm
+output:
+  - platform: gpio
+    id: lock_relay
+    pin: GPIO2
+
+  # white LED
+  - platform: ledc
+    channel: 2
+    pin: GPIO4
+    id: flash_led
+
+  # red status light
+  - platform: gpio
+    pin:
+      number: GPIO33
+      inverted: True
+    id: status_led
+
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO01
+      mode: INPUT_PULLUP
+      inverted: true
+    id: btn_1
+    name: "Button 1"
+    entity_category: diagnostic
+    filters:
+      - delayed_on_off: 100ms
+    #on_press:
+    #  then:
+    #    - switch.turn_on: call_waiting_tone
+    disabled_by_default: True
+
+  - platform: gpio
+    pin:
+      number: GPIO03
+      mode: INPUT_PULLUP
+      inverted: true
+    id: btn_2
+    name: "Button 2"
+    entity_category: diagnostic
+    filters:
+      - delayed_on_off: 100ms
+    on_press:
+      then:
+        - lambda: |
+            id(tone_switch).publish_state(true);
+    on_release: 
+      then:
+        - lambda: |
+            id(tone_switch).publish_state(false);
+
+    ##
+
+  - platform: status
+    name: "Status"
+    entity_category: diagnostic
+
+  - platform: template
+    id: enable_microphone_switch
+    name: "Microphone active"
+    entity_category: diagnostic
+
+  - platform: template
+    id: enable_speaker_switch
+    name: "Speaker active"
+    entity_category: diagnostic
+
+  - platform: template
+    id: tone_switch
+    internal: True
+
+lock:
+  - platform: output
+    output: lock_relay
+    name: "Ulazna vrata"
+    id: door_lock
+    on_unlock:
+      - delay: !lambda "return id(timeout).state * 1000;"
+      - lock.lock: door_lock
+
+esp32_camera:
+  id: espcam
+  name: Kamera
+  external_clock:
+    pin: GPIO0
+    frequency: 8MHz
+  i2c_pins:
+    sda: GPIO26
+    scl: GPIO27
+  data_pins: [GPIO5, GPIO18, GPIO19, GPIO21, GPIO36, GPIO39, GPIO34, GPIO35]
+  vsync_pin: GPIO25
+  href_pin: GPIO23
+  pixel_clock_pin: GPIO22
+  power_down_pin: GPIO32
+  resolution: 1600x1200 #1600x1200 1024x768
+  jpeg_quality: 15  # max. 63
+  max_framerate: 2.0fps
+  idle_framerate: 0.05fps
+  frame_buffer_count: 2
+  vertical_flip: False
+  horizontal_mirror: False
+  brightness: 2 # -2 to 2
+  contrast: 1 # -2 to 2
+  special_effect: none
+  # exposure settings
+  aec_mode: auto
+  aec2: True
+  ae_level: 2
+  aec_value: 0
+  # gain settings
+  agc_mode: auto
+  agc_gain_ceiling: 128x
+  agc_value: 0
+  # white balance setting
+  wb_mode: auto
+  disabled_by_default: True
+  
+light:
+  - platform: monochromatic
+    output: flash_led
+    name: "Svjetlo"
+    entity_category: config
+    disabled_by_default: True
+
+  - platform: binary
+    output: status_led
+    id: status_led_switch
+    name: "Led"
+    entity_category: config
+    disabled_by_default: True
+
+text_sensor:
+  - platform: debug
+    reset_reason:
+      name: "Reset Reason"
+      disabled_by_default: True
+
+  - platform: template
+    name: "Audio Partner IP"
+    id: partner_ip_sensor
+    entity_category: diagnostic
+    disabled_by_default: True
+
+sensor:
+  - platform: wifi_signal
+    name: "WiFi Signal dB"
+    id: wifi_signal_db
+    update_interval: 30s
+    entity_category: diagnostic
+    disabled_by_default: True
+
+  - platform: debug
+    free:
+      name: "Heap Free"
+      disabled_by_default: True
+    loop_time:
+      name: "Loop Time"
+      disabled_by_default: True
+    psram:
+      name: "Free PSRAM"
+      disabled_by_default: True
+
+esp32_camera_web_server:
+  - port: 8080
+    mode: stream
+  - port: 8081
+    mode: snapshot
+
+custom_component:
+  - lambda: |-
+      auto audio = new ESP32TwoWayAudio(10);
+      // audio->set_remote_address("192.168.1.2", 10801);
+      audio->set_com_port(10801);
+
+      audio->set_microphone_switch(id(enable_microphone_switch));
+      audio->set_speaker_switch(id(enable_speaker_switch));
+      audio->set_call_tone_switch(id(tone_switch));
+      audio->set_partner_ip_sensor(id(partner_ip_sensor));
+
+      return {audio};
