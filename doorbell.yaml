@@ -1,9 +1,6 @@
 esphome:
   name: "Doorbell"
   friendly_name: doorbell
-  includes:
-    - esp32_twoway_audio.h
-    - esp32_twoway_audio.cpp
 
   on_boot:
     priority: 600
@@ -13,32 +10,18 @@ esphome:
 esp32:
   board: esp32dev
   framework:
-    type: arduino
+    type: esp-idf
 
-deep_sleep:
-
-time:
-  - platform: sntp
-    timezone: "Europe/Zagreb"
-    on_time:
-      - seconds: 0
-        minutes: 30
-        hours: 3
-        then:
-          - switch.turn_on: restart
+external_components:
+  - source:
+      type: local
+      path: external_components
+    components: [esp32_two_way_audio]
 
 psram:
 
 logger:
-  #level: WARN
-  #level: VERBOSE
   level: INFO
-
-  #on_message:
-  #  level: ERROR
-  #  then:
-  #
-  # [esp32_camera_web_server:179] [1;31m[httpd] [0;33m STREAM: failed to acquire frame
 
 debug:
   update_interval: 60s
@@ -83,18 +66,8 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
 
-  use_address: 192.168.1.60
-
-  manual_ip:
-    static_ip: 192.168.1.60
-    gateway: 192.168.1.1
-    subnet: 255.255.255.0
-    dns1: 9.9.9.9
-
   power_save_mode: none
-  fast_connect: on
 
-  # Enable fallback hotspot (captive portal) in case wifi connection fails
   ap:
     ssid: "Doorbell Fallback Hotspot"
     password: "alsochangeme"
@@ -103,19 +76,7 @@ captive_portal:
 
 web_server:
   version: 3
-
-number:
-  - platform: template
-    max_value: 20
-    min_value: 1
-    step: 1
-    name: "Vrijeme do zaključavanja"
-    id: "timeout"
-    unit_of_measurement: "s"
-    optimistic: True
-    initial_value: 5
-    entity_category: config
-
+  
 script:
   - id: auto_turn_off_comm
     then:
@@ -123,18 +84,6 @@ script:
       - switch.turn_off: enable_audio
 
 switch:
-  - platform: template
-    name: "Restart"
-    id: restart
-    optimistic: True
-    entity_category: diagnostic
-    on_turn_on: 
-      then:
-        - deep_sleep.enter:
-            sleep_duration: 10sec
-
-  ##
-
   - platform: template
     optimistic: True
     id: enable_tone
@@ -244,15 +193,6 @@ binary_sensor:
     id: tone_switch
     internal: True
 
-lock:
-  - platform: output
-    output: lock_relay
-    name: "Ulazna vrata"
-    id: door_lock
-    on_unlock:
-      - delay: !lambda "return id(timeout).state * 1000;"
-      - lock.lock: door_lock
-
 esp32_camera:
   id: espcam
   name: Kamera
@@ -340,16 +280,16 @@ esp32_camera_web_server:
     mode: stream
   - port: 8081
     mode: snapshot
-
-custom_component:
-  - lambda: |-
-      auto audio = new ESP32TwoWayAudio(10);
-      // audio->set_remote_address("192.168.1.2", 10801);
-      audio->set_com_port(10801);
-
-      audio->set_microphone_switch(id(enable_microphone_switch));
-      audio->set_speaker_switch(id(enable_speaker_switch));
-      audio->set_call_tone_switch(id(tone_switch));
-      audio->set_partner_ip_sensor(id(partner_ip_sensor));
-
-      return {audio};
+    
+esp32_two_way_audio:
+  bck_pin: 15        # SCK
+  ws_pin: 13         # LRC
+  data_out_pin: 14   # Speaker
+  data_in_pin: 12    # Microphone
+ 
+  com_port: 10801
+ 
+  microphone_switch: enable_microphone_switch
+  speaker_switch: enable_speaker_switch
+  call_tone_switch: tone_switch
+  partner_ip_sensor: partner_ip_sensor
